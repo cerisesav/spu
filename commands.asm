@@ -1,2 +1,4 @@
-push 30
-pop 60
+start:
+	push 256
+	push 5
+	hlt

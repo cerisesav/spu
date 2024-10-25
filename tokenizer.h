@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-struct FileBuffer {
+struct FileBuffer { // naming
   char* buffer;
   size_t buf_len;
 };
