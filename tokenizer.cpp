@@ -6,13 +6,13 @@
 static const char* SEPARATORS_STRING = "\t \n";
 
 static FileBuffer read_file(const char* file_name);
-static size_t get_file_len(FILE* file);
 static char* read_file_text(FILE* file, size_t file_len);
 static size_t get_words_number(const FileBuffer* text);
 static char** tokenize_text(FileBuffer* text, size_t words_num);
 
 // create tokens of words
 Text tokenize_text_to_word(const char* file_name) {
+
     FileBuffer text_buf = read_file(file_name);
     size_t words_num = get_words_number(&text_buf);
     char** words_array = tokenize_text(&text_buf, words_num);
@@ -39,7 +39,7 @@ static FileBuffer read_file(const char* file_name) {
     return text;
 }
 
-static size_t get_file_len(FILE* file) {
+size_t get_file_len(FILE* file) {
     fseek(file, 0, SEEK_END);
     size_t file_len = ftell(file);
     rewind(file);

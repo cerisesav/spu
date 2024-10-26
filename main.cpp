@@ -1,5 +1,7 @@
 #include "assembler.h"
 #include "processor.h"
+#include "tokenizer.h"
+
 #include <assert.h>
 #include <stddef.h>
 
@@ -17,7 +19,10 @@ int main(int argc, const char** argv) {
 
     translate_assembler_to_binary(argv[INPUT_FILE_NAME_INDEX], argv[OUTPUT_FILE_NAME_INDEX]);
 
-    run_processor_from_file(argv[OUTPUT_FILE_NAME_INDEX], 20);
+    FILE* out_file = fopen(argv[OUTPUT_FILE_NAME_INDEX], "rb");
+    assert(out_file);
+
+    run_processor_from_file(argv[OUTPUT_FILE_NAME_INDEX], get_file_len(out_file));
 
     return 0;
 }

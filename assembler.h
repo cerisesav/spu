@@ -6,13 +6,13 @@
 #define DEF_CMD(name, num, ...) \
   name##_OP = num,              \
 
+
 enum TokenType {
     OPERATION,
     NUMBER,
     REGISTER,
     MEMORY_BRACKET,
-    LABEL,
-    LABEL_REFERENCE
+    LABEL
 };
 
 enum OperationType {
@@ -23,15 +23,13 @@ enum OperationType {
 
 struct Label {
     char* name;
-    long position;
+    int position;
 };
 
 struct LabelTable {
     struct Label* labels;
     size_t count;
 };
-
-
 
 enum RegisterType {
     RAX_REG,
@@ -59,6 +57,11 @@ struct Token {
 };
 
 Token* tokenize_words(char** words_array, size_t words_num);
+
+struct LabelTable* create_label_table();
+void add_label(struct LabelTable* table, const char* name, int position);
+int find_label(struct LabelTable* table, const char* name);
+void free_label_table(struct LabelTable* table);
 
 void translate_assembler_to_binary(const char* input_file_name,
                                    const char* output_file_name);

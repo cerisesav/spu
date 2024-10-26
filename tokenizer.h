@@ -19,4 +19,6 @@ Text tokenize_text_to_word(const char* file_name);
 
 void destroy_tokenized_text(Text* text);
 
+size_t get_file_len(FILE* file);
+
 #endif

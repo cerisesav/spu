@@ -30,23 +30,22 @@ void SpuDtor(struct Spu* spu)
 
 void Run(Spu* spu, long size)
 {
-    printf("Executing instruction at ip = %d: %d\n", spu->ip, spu->code[spu->ip]);
 
     while (spu->ip < size)
     {
+
+    printf("Executing instruction at ip = %d: %d\n", spu->ip, spu->code[spu->ip]);
 
         switch (spu->code[spu->ip])
         {
             #include "commands.h"
 
             default:
-                printf("Unknown operation: %d %d\n", spu->code[spu->ip], spu->ip);
+                printf("Unknown operation, it's ip: %d %d\n", spu->code[spu->ip], spu->ip);
                 spu->ip += sizeof(int);
                 break;
         }
     }
-
-    StackDumpMacro(&spu->stack);
 }
 #undef DEF_CMD
 

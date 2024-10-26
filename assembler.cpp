@@ -6,9 +6,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#define LABEL_TABLE_CAPACITY 1000
 
 static TokenType determine_token_type(const char* word);
 static TokenValue determine_token_value(const char* word, TokenType type);
+static bool is_label_instruction(const Token* token);
+static bool is_jump_instruction(int op_type);
 
 Token* tokenize_words(char** words_array, size_t words_num) {
     Token* tokens = (Token*)calloc(words_num, sizeof(Token));
@@ -19,37 +22,54 @@ Token* tokenize_words(char** words_array, size_t words_num) {
         TokenValue value = determine_token_value(words_array[i], type);
         tokens[i].type = type;
         tokens[i].value = value;
+
+        printf("Token %zu: type = %d, ", i, tokens[i].type);
+        if (tokens[i].type == OPERATION) {
+            printf("op_type = %d\n", tokens[i].value.op_type);
+        } else if (tokens[i].type == NUMBER) {
+            printf("number_value = %d\n", tokens[i].value.number_value);
+        } else if (tokens[i].type == REGISTER) {
+            printf("reg_type = %d\n", tokens[i].value.reg_type);
+        } else if (tokens[i].type == LABEL) {
+            printf("label_name = %s\n", tokens[i].value.label_name);
+        }
     }
     return tokens;
 }
 
 static TokenType determine_token_type(const char* word) {
     if (strcmp(word, "push") == 0 || strcmp(word, "pop") == 0 ||
-        strcmp(word, "add") == 0 || strcmp(word, "sub") == 0 ||
-        strcmp(word, "jmp") == 0 || strcmp(word, "je") == 0 ||
-        strcmp(word, "jne") == 0 || strcmp(word, "hlt") == 0) {
+        strcmp(word, "add") == 0  ||  strcmp(word, "sub") == 0 ||
+        strcmp(word, "jmp") == 0  ||  strcmp(word, "je") == 0 ||
+        strcmp(word, "jne") == 0  ||  strcmp(word, "hlt") == 0 ||
+        strcmp(word, "jb") == 0   ||   strcmp(word, "ja") == 0 ||
+        strcmp(word, "out") == 0) {
         return OPERATION;
     }
 
-    if (isdigit(word[0])) {
+    else if (isdigit(word[0])) {
         return NUMBER;
     }
 
-    if (strcmp(word, "rax") == 0 || strcmp(word, "rbx") == 0) {
+    else if (strcmp(word, "rax") == 0 || strcmp(word, "rbx") == 0) {
         return REGISTER;
     }
 
-    if (strcmp(word, "[") == 0) {
+    else if (strcmp(word, "[") == 0) {
         return MEMORY_BRACKET;
     }
 
-    if (word[strlen(word) - 1] == ':') {
+    else if (word[strlen(word) - 1] == ':') {
         return LABEL;
     }
 
-    // else ???
+    else
+    {
+        printf("%s\n", word);
+        puts("UNKNOWN");
+        assert(0);
+    }
 
-    return LABEL_REFERENCE;
 }
 
 static TokenValue determine_token_value(const char* word, TokenType type) {
@@ -67,6 +87,14 @@ static TokenValue determine_token_value(const char* word, TokenType type) {
                 value.op_type = SUB_OP;
             } else if (strcmp(word, "hlt") == 0) {
                 value.op_type = HLT_OP;
+            } else if (strcmp(word, "jmp") == 0) {
+                value.op_type = JMP_OP;
+            } else if (strcmp(word, "jb") == 0) {
+                value.op_type = JB_OP;
+            } else if (strcmp(word, "ja") == 0) {
+                value.op_type = JA_OP;
+            } else if (strcmp(word, "out") == 0) {
+                value.op_type = OUT_OP;
             }
             break;
         }
@@ -98,68 +126,178 @@ static TokenValue determine_token_value(const char* word, TokenType type) {
             value.label_name = strdup(word);
             break;
 
-        case LABEL_REFERENCE:
-        value.label_name = strdup(word);
-        break;
     }
 
     return value;
 }
 
+struct LabelTable* create_label_table() {
+
+    struct LabelTable* table = (LabelTable*) calloc(1, sizeof(struct LabelTable));
+
+    table->count = 0;
+    table->labels = (Label*) calloc(LABEL_TABLE_CAPACITY, sizeof(struct Label));
+
+    return table;
+}
+
+void add_label(struct LabelTable* table, const char* name, int position) {
+
+    if (find_label(table, name) != -1) {
+        return;
+    }
+
+    if (table->count > LABEL_TABLE_CAPACITY) {
+        printf("%s\n", "Count > capacity");
+        assert(0);
+    }
+
+    table->labels[table->count].name = strdup(name);
+
+    table->labels[table->count].position = position;
+
+    table->count++;
+
+    printf("Added label: %s at position %d\n", name, position);
+    for (size_t i = 0; i < table->count; i++) {
+        printf("Label %zu: name = %s, position = %d\n",
+               i, table->labels[i].name, table->labels[i].position);
+    }
+
+}
+
+int find_label(struct LabelTable* table, const char* name) {
+    for (size_t i = 0; i < table->count; i++) {
+        if (strcmp(table->labels[i].name, name) == 0) {
+            return table->labels[i].position;
+        }
+    }
+    return -1;
+}
+
+void free_label_table(struct LabelTable* table) {
+    for (size_t i = 0; i < table->count; i++) {
+        free(table->labels[i].name);
+    }
+    free(table->labels);
+    free(table);
+}
+
+static bool is_jump_instruction(int op_type) {
+    return op_type == JMP_OP || op_type == JA_OP || op_type == JB_OP || op_type == JE_OP || op_type == JNE_OP;
+}
 
 void translate_assembler_to_binary(const char *input_file_name,
                                    const char *output_file_name) {
 
     struct Text tokens_text = tokenize_text_to_word(input_file_name);
+    size_t words_num = tokens_text.words_num;
 
-    int words_num = tokens_text.words_num;
+    struct Token* tokens = tokenize_words(tokens_text.words_array, words_num);
 
-    struct Token* tokens = tokenize_words(tokens_text.words_array, tokens_text.words_num);
+    struct LabelTable* label_table = create_label_table();
 
+    size_t instruction_address = 0;
 
-    printf("%zu\n\n", tokens_text.words_num);
+    Token* prev_token = nullptr;
 
-    for (size_t i = 0; i < tokens_text.words_num; i++)
-    {
-        printf("%s\n", tokens_text.words_array[i]);
-    }
+    // первый проход
+    for (size_t i = 0; i < words_num; ++i) {
 
-    for (size_t i = 0; i < tokens_text.words_num; ++i) {
         struct Token current_token = tokens[i];
-    }
-
-    FILE* out_file = fopen(output_file_name, "wb"); // words_num -> var
-    assert(out_file);
-
-
-    for (size_t i = 0; i < tokens_text.words_num; ++i) {
-
-        Token current_token = tokens[i];
 
         switch (current_token.type) {
-            case OPERATION:
-                fwrite(&current_token.value.op_type, sizeof(int), 1, out_file); // write in array -> write to file by one fwrite
 
+            case LABEL:
+
+            if (prev_token == NULL || prev_token->type != OPERATION) {
+                add_label(label_table, current_token.value.label_name, instruction_address);
+            }
+            break;
+
+            case OPERATION:
+                instruction_address += sizeof(int);
+
+                if (is_jump_instruction(current_token.value.op_type)) {
+                    instruction_address += sizeof(int);
+                }
+                break;
+
+            case NUMBER: {
+                    instruction_address += sizeof(int);
+                    break;
+            }
+
+            case REGISTER: {
+                    instruction_address += sizeof(char);
+                    break;
+                }
+        }
+
+        prev_token = &tokens[i];
+    }
+
+
+    FILE* out_file = fopen(output_file_name, "wb");
+    assert(out_file);
+
+    for (size_t i = 0; i < words_num; ++i) {
+        struct Token current_token = tokens[i];
+
+        printf("Writing token %zu: type = %d\n", i, current_token.type);
+
+        switch (current_token.type) {
+
+            case OPERATION:
+
+                printf("Operation: %d\n", current_token.value.op_type);
+                fwrite(&current_token.value.op_type, sizeof(int), 1, out_file);
+
+                if (is_jump_instruction(current_token.value.op_type)) {
+                    struct Token label_token = tokens[++i];
+                    int label_address = find_label(label_table, label_token.value.label_name);
+                    fwrite(&label_address, sizeof(int), 1, out_file);
+                }
                 break;
 
             case NUMBER:
+                printf("Number: %d\n", current_token.value.number_value);
                 fwrite(&current_token.value.number_value, sizeof(int), 1, out_file);
-
                 break;
 
             case REGISTER:
                 fwrite(&current_token.value.reg_type, sizeof(char), 1, out_file);
                 break;
 
-            case MEMORY_BRACKET:
-                fwrite(&current_token.value.bracket_type, sizeof(char), 1, out_file);
+            case LABEL:
+            {
+                struct Token label_token = tokens[i];
+
+                if (label_token.type != LABEL) {
+                    // fprintf(stderr, "Error: Expected label after jump instruction\n");
+                    // return;
+                }
+
+                int label_address = find_label(label_table, current_token.value.label_name);
+
+                if (label_address == -1) {
+                    fprintf(stderr, "Error: Undefined label '%s'\n", current_token.value.label_name);
+                    return;
+                }
+
+                fwrite(&label_address, sizeof(int), 1, out_file);
                 break;
 
+            }
+
+            default:
+                break;
         }
     }
 
     fclose(out_file);
-    destroy_tokenized_text(&tokens_text);
 
-    free(tokens); // ctor dtor
+    destroy_tokenized_text(&tokens_text);
+    free(tokens);
+    free_label_table(label_table);
 }

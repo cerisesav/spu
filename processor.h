@@ -12,6 +12,8 @@ FILE *name = fopen(file, type);     \
         assert(0);                  \
     }                               \
 
+#define register_count 10
+
 struct Spu {
     char* code;
     int ip;

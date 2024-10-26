@@ -87,7 +87,7 @@ const char* StackError(Stack* stk)
     {
         case Overflow: return "Stack Overflow";
         case Size: return "Size/Capacity is not correct";
-        case Underflow: return "Stack Underflow";
+        case Underflow: assert(0); return "Stack Underflow";
         case NoError: return "Stack is working fine";
         case NullPointer: return "Null Pointer Error";
         case CanaryError: return "Canary was poisoned";
