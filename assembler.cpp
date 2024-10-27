@@ -10,8 +10,13 @@
 
 static TokenType determine_token_type(const char* word);
 static TokenValue determine_token_value(const char* word, TokenType type);
-static bool is_label_instruction(const Token* token);
+static struct LabelTable* create_label_table();
+static void add_label(struct LabelTable* table, const char* name, int position);
+static int find_label(struct LabelTable* table, const char* name);
+static void free_label_table(struct LabelTable* table);
 static bool is_jump_instruction(int op_type);
+static void first_pass(struct Token* tokens, size_t words_num, struct LabelTable* label_table);
+static void second_pass(struct Token* tokens, size_t words_num, struct LabelTable* label_table, FILE* out_file);
 
 Token* tokenize_words(char** words_array, size_t words_num) {
     Token* tokens = (Token*)calloc(words_num, sizeof(Token));
@@ -63,13 +68,14 @@ static TokenType determine_token_type(const char* word) {
         return LABEL;
     }
 
-    else
-    {
+    else if (isalpha(word[0])) {  // For references to labels in jump instructions
+        return JMP_LABEL;
+    }
+    else {
         printf("%s\n", word);
         puts("UNKNOWN");
         assert(0);
     }
-
 }
 
 static TokenValue determine_token_value(const char* word, TokenType type) {
@@ -122,16 +128,25 @@ static TokenValue determine_token_value(const char* word, TokenType type) {
         //     }
         //     break; - problems with tokens [rax] - one word
 
-        case LABEL:
+        case LABEL: {
+            if (word[strlen(word) - 1] == ':') {
+                char* name = strdup(word);
+                name[strlen(name) - 1] = '\0';
+                value.label_name = name;
+            }
+        }
+
+        case JMP_LABEL: {
             value.label_name = strdup(word);
             break;
-
+        }
     }
 
     return value;
 }
 
-struct LabelTable* create_label_table() {
+
+static struct LabelTable* create_label_table() {
 
     struct LabelTable* table = (LabelTable*) calloc(1, sizeof(struct LabelTable));
 
@@ -141,7 +156,15 @@ struct LabelTable* create_label_table() {
     return table;
 }
 
-void add_label(struct LabelTable* table, const char* name, int position) {
+static void add_final_label(struct LabelTable* table, struct PendingLabel* pending_labels, size_t* pending_count) {
+    for (size_t i = 0; i < *pending_count; ++i) {
+        add_label(table, pending_labels[i].name, pending_labels[i].instruction_address);
+        free(pending_labels[i].name);
+    }
+    *pending_count = 0;
+}
+
+static void add_label(struct LabelTable* table, const char* name, int position) {
 
     if (find_label(table, name) != -1) {
         return;
@@ -163,10 +186,9 @@ void add_label(struct LabelTable* table, const char* name, int position) {
         printf("Label %zu: name = %s, position = %d\n",
                i, table->labels[i].name, table->labels[i].position);
     }
-
 }
 
-int find_label(struct LabelTable* table, const char* name) {
+static int find_label(struct LabelTable* table, const char* name) {
     for (size_t i = 0; i < table->count; i++) {
         if (strcmp(table->labels[i].name, name) == 0) {
             return table->labels[i].position;
@@ -175,7 +197,7 @@ int find_label(struct LabelTable* table, const char* name) {
     return -1;
 }
 
-void free_label_table(struct LabelTable* table) {
+static void free_label_table(struct LabelTable* table) {
     for (size_t i = 0; i < table->count; i++) {
         free(table->labels[i].name);
     }
@@ -187,81 +209,75 @@ static bool is_jump_instruction(int op_type) {
     return op_type == JMP_OP || op_type == JA_OP || op_type == JB_OP || op_type == JE_OP || op_type == JNE_OP;
 }
 
-void translate_assembler_to_binary(const char *input_file_name,
-                                   const char *output_file_name) {
-
-    struct Text tokens_text = tokenize_text_to_word(input_file_name);
-    size_t words_num = tokens_text.words_num;
-
-    struct Token* tokens = tokenize_words(tokens_text.words_array, words_num);
-
-    struct LabelTable* label_table = create_label_table();
-
+static void first_pass(struct Token* tokens, size_t words_num, struct LabelTable* label_table) {
     size_t instruction_address = 0;
 
-    Token* prev_token = nullptr;
-
-    // первый проход
     for (size_t i = 0; i < words_num; ++i) {
-
-        struct Token current_token = tokens[i];
+        Token current_token = tokens[i];
 
         switch (current_token.type) {
+            case LABEL: {
 
-            case LABEL:
+                char* label_name = strdup(current_token.value.label_name);
+                label_name[strlen(label_name) - 1] = '\0';
 
-            if (prev_token == NULL || prev_token->type != OPERATION) {
-                add_label(label_table, current_token.value.label_name, instruction_address);
-            }
-            break;
-
-            case OPERATION:
-                instruction_address += sizeof(int);
-
-                if (is_jump_instruction(current_token.value.op_type)) {
-                    instruction_address += sizeof(int);
-                }
+                add_label(label_table, label_name, instruction_address);
+                free(label_name);
                 break;
 
-            case NUMBER: {
-                    instruction_address += sizeof(int);
-                    break;
             }
-
-            case REGISTER: {
-                    instruction_address += sizeof(char);
-                    break;
-                }
-        }
-
-        prev_token = &tokens[i];
-    }
-
-
-    FILE* out_file = fopen(output_file_name, "wb");
-    assert(out_file);
-
-    for (size_t i = 0; i < words_num; ++i) {
-        struct Token current_token = tokens[i];
-
-        printf("Writing token %zu: type = %d\n", i, current_token.type);
-
-        switch (current_token.type) {
-
             case OPERATION:
-
-                printf("Operation: %d\n", current_token.value.op_type);
-                fwrite(&current_token.value.op_type, sizeof(int), 1, out_file);
-
+                instruction_address += sizeof(int);
                 if (is_jump_instruction(current_token.value.op_type)) {
-                    struct Token label_token = tokens[++i];
-                    int label_address = find_label(label_table, label_token.value.label_name);
-                    fwrite(&label_address, sizeof(int), 1, out_file);
+                    instruction_address += sizeof(int);
                 }
                 break;
 
             case NUMBER:
-                printf("Number: %d\n", current_token.value.number_value);
+                instruction_address += sizeof(int);
+                break;
+
+            case REGISTER:
+                instruction_address += sizeof(char);
+                break;
+
+            default:
+                break;
+        }
+    }
+}
+
+
+static void second_pass(struct Token* tokens, size_t words_num, struct LabelTable* label_table, FILE* out_file) {
+    for (size_t i = 0; i < words_num; ++i) {
+        Token current_token = tokens[i];
+        printf("Writing token %zu: type = %d\n", i, current_token.type);
+
+        switch (current_token.type) {
+
+            case OPERATION: {
+                fwrite(&current_token.value.op_type, sizeof(int), 1, out_file);
+
+                if (is_jump_instruction(current_token.value.op_type)) {
+
+                    Token label_token = tokens[++i];
+                    if (label_token.type != JMP_LABEL) {
+                        fprintf(stderr, "Error: Expected label reference after jump\n");
+                        return;
+                    }
+
+                    int label_address = find_label(label_table, label_token.value.label_name);
+                    if (label_address == -1) {
+                        fprintf(stderr, "Error: Undefined label '%s'\n", label_token.value.label_name);
+                        return;
+                    }
+
+                    fwrite(&label_address, sizeof(int), 1, out_file);
+                }
+                break;
+            }
+
+            case NUMBER:
                 fwrite(&current_token.value.number_value, sizeof(int), 1, out_file);
                 break;
 
@@ -269,31 +285,26 @@ void translate_assembler_to_binary(const char *input_file_name,
                 fwrite(&current_token.value.reg_type, sizeof(char), 1, out_file);
                 break;
 
-            case LABEL:
-            {
-                struct Token label_token = tokens[i];
-
-                if (label_token.type != LABEL) {
-                    // fprintf(stderr, "Error: Expected label after jump instruction\n");
-                    // return;
-                }
-
-                int label_address = find_label(label_table, current_token.value.label_name);
-
-                if (label_address == -1) {
-                    fprintf(stderr, "Error: Undefined label '%s'\n", current_token.value.label_name);
-                    return;
-                }
-
-                fwrite(&label_address, sizeof(int), 1, out_file);
-                break;
-
-            }
-
             default:
                 break;
         }
     }
+}
+
+
+void translate_assembler_to_binary(const char *input_file_name, const char *output_file_name) {
+    struct Text tokens_text = tokenize_text_to_word(input_file_name);
+    size_t words_num = tokens_text.words_num;
+
+    struct Token* tokens = tokenize_words(tokens_text.words_array, words_num);
+    struct LabelTable* label_table = create_label_table();
+
+    first_pass(tokens, words_num, label_table);
+
+    FILE* out_file = fopen(output_file_name, "wb");
+    assert(out_file);
+
+    second_pass(tokens, words_num, label_table, out_file);
 
     fclose(out_file);
 

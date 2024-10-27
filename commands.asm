@@ -1,12 +1,15 @@
-start:
-    push 10
-    push 30
-    ja end:
-	push 11
-	push 28
-	hlt
-end:
-	push 10
-	out
-	out
+push 30
+push 40
 
+ja suki
+
+suki:
+	push 88
+	out
+	hlt
+
+push 20
+push 70
+pop
+out
+hlt

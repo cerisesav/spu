@@ -12,7 +12,8 @@ enum TokenType {
     NUMBER,
     REGISTER,
     MEMORY_BRACKET,
-    LABEL
+    LABEL,
+    JMP_LABEL
 };
 
 enum OperationType {
@@ -29,6 +30,11 @@ struct Label {
 struct LabelTable {
     struct Label* labels;
     size_t count;
+};
+
+struct PendingLabel {
+    char* name;
+    size_t instruction_address;
 };
 
 enum RegisterType {
@@ -57,11 +63,6 @@ struct Token {
 };
 
 Token* tokenize_words(char** words_array, size_t words_num);
-
-struct LabelTable* create_label_table();
-void add_label(struct LabelTable* table, const char* name, int position);
-int find_label(struct LabelTable* table, const char* name);
-void free_label_table(struct LabelTable* table);
 
 void translate_assembler_to_binary(const char* input_file_name,
                                    const char* output_file_name);

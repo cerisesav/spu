@@ -67,7 +67,7 @@ DEF_CMD(JA, 7, 1,
     int a = StackPop(&spu->stack);
     int b = StackPop(&spu->stack);
 
-    printf("%d\n", jump_address);
+    printf("jump address: %d\n", jump_address);
 
     if (a > b && jump_address >= 0 && jump_address < size) {
         spu->ip = jump_address;
